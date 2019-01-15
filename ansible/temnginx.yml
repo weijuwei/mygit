@@ -1,0 +1,22 @@
+---
+
+- hosts: lab
+  remote_user: root
+  vars:
+    vhosts:
+      - web1:
+        listen: 8080
+        name: "web1"
+        root: "/var/www/html/web1/"
+      - web2:
+        listen: 9090
+       # name: "web2"
+        root: "/var/www/html/web2/"
+      - web3:
+        listen: 7070
+        name: "web3"
+        root: "/var/www/html/web3/"
+
+  tasks:
+     - name: template config
+       template: src=nginx.conf.j2 dest=/tmp/nginx.conf

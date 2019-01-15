@@ -1,0 +1,12 @@
+---
+
+- hosts: lab
+  remote_user: root
+  
+  vars:
+    - var1: 8888
+    - var2: 9999
+
+  tasks:
+  - name: touch file
+    file: path=/tmp/{{var1}} state=touch

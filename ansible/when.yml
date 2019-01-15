@@ -1,0 +1,19 @@
+---
+
+- hosts: lab
+  remote_user: root
+
+  tasks:
+    - name: copy lab2 config file
+      template: src=httpd-lab1.conf.j2 dest=/etc/httpd/conf/httpd.conf
+      when: ansible_hostname == 'lab1'
+      notify: restart httpd service
+
+    - name: copy lab2 config file
+      template: src=httpd-lab2.conf.j2 dest=/etc/httpd/conf/httpd.conf
+      when: ansible_hostname == 'lab2'
+      notify: restart httpd service
+
+  handlers:
+    - name: restart httpd service
+      service: name=httpd state=restarted

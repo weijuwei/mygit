@@ -1,0 +1,12 @@
+---
+
+- hosts: lab
+  remote_user: root
+  tasks:
+  - name: install some pkgs
+    yum: name={{ item }} state=latest
+    with_items:
+    - httpd
+    - php
+    - samba
+    - mariadb

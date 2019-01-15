@@ -1,0 +1,10 @@
+---
+
+- hosts: lab
+  remote_user: root
+
+  tasks:
+   - name: install_nginx
+     yum: name=nginx state=present
+   - name: start nginx
+     service: name=nginx state=started 

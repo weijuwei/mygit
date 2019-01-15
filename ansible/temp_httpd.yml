@@ -1,0 +1,24 @@
+---
+
+- hosts: lab
+  remote_user: root
+  
+  vars:
+    - var1: 8888
+    - var2: 9999
+
+  tasks:
+  - name: install httpd service
+    yum: name=httpd state=present
+
+  - name: copy httpd conf file
+   # copy: src=/root/ansible/httpd.conf dest=/etc/httpd/conf
+    template: src=httpd.conf.j2 dest=/etc/httpd/conf/httpd.conf 
+    notify: restart httpd
+
+  - name: start httpd service
+    service: name=httpd state=started enabled=yes  
+
+  handlers:
+  - name: restart httpd
+    service: name=httpd state=restarted 

@@ -1,0 +1,8 @@
+---
+
+- hosts: lab
+  remote_user: root
+  
+  tasks:
+  - name: make file
+    file: name=/tmp/testyml state=touch

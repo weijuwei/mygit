@@ -1,0 +1,15 @@
+---
+
+- hosts: lab
+  remote_user: root
+
+  vars:
+    - username: user1
+    - groupname: groups1
+
+  tasks:
+    - name: create group
+      group: name={{ groupname }} state=present
+
+    - name: create user
+      user: name={{ username }} group={{ groupname }} state=present system=yes

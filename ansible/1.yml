@@ -1,0 +1,14 @@
+---
+
+- hosts: lab
+  remote_user: root
+
+  tasks:
+  - name: create file
+    tags: file
+    shell: mkdir /tmp/{{ item }}
+    with_items:
+      - file4
+      - file5
+      - file6
+      - file7

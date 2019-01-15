@@ -1,0 +1,9 @@
+{% for vhost in vhosts%}
+server {
+   listen {{vhost.listen}} 
+{%if vhost.name is defined%}
+   server_name {{vhost.name}}
+{%endif%}
+   root {{vhost.root}} 
+}
+{%endfor%}

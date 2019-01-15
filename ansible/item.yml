@@ -1,0 +1,11 @@
+---
+
+- hosts: lab
+  remote_user: root
+
+  tasks:
+    - name: create users
+      user: name={{item}} group=groups1
+      with_items:
+        - item1
+        - item2
