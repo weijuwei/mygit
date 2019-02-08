@@ -1,0 +1,13 @@
+简单命令
+
+上传文件,自动生成file_id
+fdfs_upload_file /etc/fdfs/client.conf xxxx
+
+查看文件
+fdfs_file_info /etc/fdfs/client.conf <file_id>
+
+下载文件
+fdfs_file_download /etc/fdfs/client.conf <file_id>
+
+删除文件
+fdfs_delete_file /etc/fdfs/client.conf <file_id>
