@@ -1,0 +1,316 @@
+系统环境：CentOS7.5
+       lab1: 192.168.10.200
+	   lab2: 192.168.10.201
+	关闭防火墙 禁用selinux 
+	修改/etc/hosts文件
+		192.168.10.201 lab2
+		192.168.10.200 lab1
+安装包版本：
+		jdk:jdk-8u201-linux-x64.rpm  https://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html
+		elasticsearch: 5.6.15 rpm    https://www.elastic.co/downloads/past-releases
+		logstash:5.6.15 rpm
+		kibana:5.6.15 rpm
+官方指南：
+		https://www.elastic.co/guide/index.html
+		
+----------------------------------------------------------------------------
+yum安装相关包
+ yum install jdk-8u201-linux-x64.rpm elasticsearch-5.6.15.rpm
+ 
+创建elasticsearch存放数据和日志的目录,修改目录所有者为elasticsearch
+# mkdir /elk/{data,logs}
+# chown elasticsearch.elasticsearch /elk/ -R
+
+在lab1上修改/etc/elasticsearch/elasticsearch.yml文件
+# grep '^[a-Z]' elasticsearch.yml 
+cluster.name: my-application
+node.name: node-1
+path.data: /elk/data
+path.logs: /elk/logs
+network.host: 192.168.10.200
+http.port: 9200
+discovery.zen.ping.unicast.hosts: ["192.168.10.200", "192.168.10.201"]
+lab2上面配置如下：
+# grep '^[a-Z]' elasticsearch.yml 
+cluster.name: my-application
+node.name: node-2
+path.data: /elk/data
+path.logs: /elk/logs
+network.host: 192.168.10.201
+http.port: 9200
+discovery.zen.ping.unicast.hosts: ["192.168.10.200", "192.168.10.201"]
+
+启动服务
+systemctl start elasticsearch
+
+验证elasticsearch：
+访问elasticsearch端口：
+ 9200：客户端访问端口
+ 9300：集群情况下服务器之间的通信端口
+访问客户端端口，正常如下显示：
+# curl 192.168.10.200:9200
+{
+  "name" : "node-1",
+  "cluster_name" : "my-application",
+  "cluster_uuid" : "u2Woi-9iQJe5fdHYKO0eaw",
+  "version" : {
+    "number" : "5.6.15",
+    "build_hash" : "fe7575a",
+    "build_date" : "2019-02-13T16:21:45.880Z",
+    "build_snapshot" : false,
+    "lucene_version" : "6.6.1"
+  },
+  "tagline" : "You Know, for Search"
+}
+
+-----------------------------------------------------------------------------------
+创建测试索引
+# curl -XPUT 192.168.10.200:9200/test_index/books/1 -d '       
+{ "name": "elasticsearch"
+  "price": "20"
+}'
+
+查看指定索引
+# curl -XGET 192.168.10.200:9200/test_index/books/1?pretty=true
+{
+  "_index" : "test_index", #索引名称
+  "_type" : "books",       #类型
+  "_id" : "1",             #id
+  "_version" : 1,
+  "found" : true,
+  "_source" : {
+    "name" : "elasticsearch",
+    "price" : "20"
+  }
+}
+
+更新索引
+# curl -XPOST 192.168.10.200:9200/test_index/books/1/_update -d '
+{"doc":{
+	"price": 30
+	}
+}'
+
+删除指定的索引文档
+# curl -XDELETE 192.168.10.200:9200/test_index/books/1
+
+删除指定索引
+# curl -XDELETE 192.168.10.200:9200/test_index/
+
+-----------------------------------------------------------------------
+
+安装head插件
+yum install npm -y
+git clone git://github.com/mobz/elasticsearch-head.git
+cd elasticsearch-head
+npm install
+npm run start & #后台启动
+
+配置elasticsearch允许远程访问：
+#vim /etc/elasticsearch/elasticsearch.yml
+http.cors.enabled: true
+http.cors.allow-origin: "*"
+
+浏览器访问，验证是否可用
+http://192.168.10.201:9100/
+
+
+--------------------------------------------------------------------------
+--------------------------------------------------------------------------
+安装logstash
+yum install logstash-5.6.15.rpm -y
+
+验证：
+1、通过命令行验证：
+# /usr/share/logstash/bin/logstash -e “input {stdin{}} output{stdout{ codec=>”rubydebug“}}”
+
+2、通过指定配置文件验证
+在/etc/logstash/conf.d/下新建测试文件以.conf结尾
+[root@lab1 ~]# cat /etc/logstash/conf.d/test.conf 
+input {
+        stdin {
+        }
+}
+
+output {
+        stdout {
+                codec => "rubydebug"
+        }
+}
+通过指定文件启动：
+ /usr/share/logstash/bin/logstash -f  /etc/logstash/conf.d/test.conf  
+
+3、验证结果显示
+The stdin plugin is now waiting for input:
+hello
+{
+      "@version" => "1",
+          "host" => "lab1",
+    "@timestamp" => 2019-02-22T12:32:40.088Z,
+       "message" => "hello"
+}
+
+-----------------------------------------------------------------------
+
+将标准输入的数据写入到elasticsearch中，并在标准输出中显示
+# /usr/share/logstash/bin/logstash -e '
+input {
+ stdin {
+ }
+}
+output {
+  elasticsearch {
+     hosts => ["192.168.10.200:9200"]
+     index => "test_logstash"
+  }
+  stdout {
+   codec => "rubydebug"
+ }
+}'
+显示如下：
+The stdin plugin is now waiting for input:
+test logstash 2
+{
+      "@version" => "1",
+          "host" => "lab1",
+    "@timestamp" => 2019-02-22T12:48:08.309Z,
+       "message" => "test logstash 2"
+}
+--------------------------------------------------------------
+将标准输入 输出到指定文件中
+# cat stdout.conf 
+input {
+        stdin {
+        }
+}
+output {
+        elasticsearch {
+                hosts => ["192.168.10.200:9200"]
+                index => "test_logstash"
+        }
+        file {
+                path => "/tmp/logstash-%{+YYYY.MM.dd}.txt"
+        }
+        stdout {
+                codec => "rubydebug"
+        }
+}
+The stdin plugin is now waiting for input:
+hellphello world
+{
+      "@version" => "1",
+          "host" => "lab1",
+    "@timestamp" => 2019-02-23T10:38:00.688Z,
+       "message" => "hellphello world"
+}
+ni hao shijie
+{
+      "@version" => "1",
+          "host" => "lab1",
+    "@timestamp" => 2019-02-23T10:38:22.016Z,
+       "message" => "ni hao shijie"
+}
+
+查看结果显示
+[root@lab1 tmp]# cat logstash-2019.02.23.txt 
+{"@version":"1","host":"lab1","@timestamp":"2019-02-23T10:38:00.688Z","message":"hellphello world"}
+{"@version":"1","host":"lab1","@timestamp":"2019-02-23T10:38:22.016Z","message":"ni hao shijie"} 
+
+-----------------------------------------------------------------
+收集系统日志 /var/log/messages 存到elasticsearch中，并在/tmp/下生成文件
+# cat system_log.conf 
+input {
+        file {
+                path => "/var/log/messages"
+                type => "system-log"
+                start_position => "beginning"
+        }
+}
+
+output {
+        elasticsearch {
+                hosts => ["192.168.10.200"]
+                index => "system-log-%{+YYYY.MM.dd}"
+        }
+        file {
+                path => "/tmp/system-log-%{+YYYY.MM.dd}"
+        }
+}
+
+需要修改messages文件权限为644
+chmod 644 /var/log/messages
+
+执行
+# /usr/share/logstash/bin/logstash -f /etc/logstash/conf.d/system_log.conf
+
+查看结果
+[root@lab1 tmp]# ls
+logstash-2019.02.23.txt  system-log-2019.02.23
+[root@lab1 tmp]# tail -n2 system-log-2019.02.23  
+{"@version":"1","host":"lab1","path":"/var/log/messages","@timestamp":"2019-02-23T11:38:54.007Z","message":"Feb 23 19:36:56 lab1 logstash: \"type\" => \"system-log\"","type":"system-log"}
+{"@version":"1","host":"lab1","path":"/var/log/messages","@timestamp":"2019-02-23T11:38:54.007Z","message":"Feb 23 19:36:56 lab1 logstash: }","type":"system-log"}
+[root@lab1 tmp]# 
+
+------------------------------------------------------------------------------
+收集多个日志文件到es
+# cat mutiple_logs.conf 
+input {
+        file {
+                path => "/var/log/messages"
+                type => "system-log"
+                start_position => "beginning"
+        }
+        file {
+                path => "/var/log/nginx/access.log"
+                type => "nginx-log"
+                start_position => "beginning"
+        }
+}
+output {
+        if [type] == "system-log" {
+                elasticsearch {
+                        hosts => ["192.168.10.200"]
+                        index => "system-log-%{+YYYY.MM.dd}"
+                }
+        }
+        if [type] == "nginx-log" {
+                elasticsearch {
+                        hosts => ["192.168.10.200"]
+                        index => "nginx-log-%{+YYYY.MM.dd}"
+                }
+        }
+}
+
+启动
+/usr/share/logstash/bin/logstash -f /etc/logstash/conf.d/mutiple_logs.conf
+
+查看结果
+生成了nginx-log*索引
+# curl -XGET 192.168.10.200:9200/nginx-log*?pretty=true
+{
+  "nginx-log-2019.02.23" : {
+    "aliases" : { },
+    "mappings" : {
+      "nginx-log" : {
+        "properties" : {
+          "@timestamp" : {
+            "type" : "date"
+          }..........
+...........
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+安装kibana
+yum install -y kibana-5.6.15-x86_64.rpm 
+
+修改配置文件
+# vim /etc/kibana/kibana.yml
+
+# grep '^[a-Z]' /etc/kibana/kibana.yml
+server.port: 5601
+server.host: "192.168.10.200"
+elasticsearch.url: "http://192.168.10.200:9200"
+
+启动服务
+systemctl start kibana
+
+浏览器打开http://192.168.10.200:5601验证是否成功
