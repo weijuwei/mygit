@@ -10,6 +10,7 @@
 		elasticsearch: 5.6.15 rpm    https://www.elastic.co/downloads/past-releases
 		logstash:5.6.15 rpm
 		kibana:5.6.15 rpm
+		filebeat:5.6.15 rpm
 官方指南：
 		https://www.elastic.co/guide/index.html
 		
@@ -281,6 +282,22 @@ output {
         }
 }
 
+nginx日志格式已修改json格式输出
+	log_format json1 '{"@timestamp":"$time_iso8601",'
+	 '"host":"$server_addr",'
+	 '"clientip":"$remote_addr",'
+	 '"size":$body_bytes_sent,'
+	 '"responsetime":$request_time,'
+	 '"upstreamtime":"$upstream_response_time",'
+	 '"upstreamhost":"$upstream_addr",'
+	 '"http_host":"$host",'
+	 '"url":"$uri",'
+	 '"domain":"$host",'
+	 '"xff":"$http_x_forwarded_for",'
+	 '"referer":"$http_referer",'
+	 '"status":"$status"}';
+
+
 启动
 /usr/share/logstash/bin/logstash -f /etc/logstash/conf.d/mutiple_logs.conf
 
@@ -314,3 +331,259 @@ elasticsearch.url: "http://192.168.10.200:9200"
 systemctl start kibana
 
 浏览器打开http://192.168.10.200:5601验证是否成功
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+安装fliebeat
+yum install -y filebeat-5.6.15-x86_64.rpm
+
+
+作用：
+ 在web端时时收集日志并传递给logstash进一步处理
+为什么不用logstash在web端收集？
+ 依赖java环境，一旦java出问题，可能影响到web服务
+ 系统资源占用率高，且存在bug风险
+ 配置比较复杂，支持匹配过滤
+ Filebeat挺好的，专注日志收集，语法简单，安装快捷，配置方便
+
+配置文件/etc/filebeat/filebeat.yml
+
+简单应用
+通过filebeat将/var/log/messages收集到/tmp下filebeat_syslog.txt中
+配置内容:
+# grep -v '#' filebeat.yml | grep '[a-Z]'
+filebeat.prospectors:
+- input_type: log
+  paths:
+    - /var/log/messages
+  exclude_lines: ["^DBG"]
+  document_type: system-log
+output.file:
+  path: "/tmp"
+  filename: "filebeat_syslog.txt"
+  
+启动服务
+systemctl start filebeat.service
+
+查看目标文件是否成功写入
+# tail /tmp/filebeat_syslog.txt
+{"@timestamp":"2019-02-24T08:45:32.341Z","beat":{"hostname":"lab1","name":"lab1","version":"5.6.15"},"input_type":"log","message":"hello world","offset":2849895,"source":"/var/log/messages","type":"system-log"}
+{"@timestamp":"2019-02-24T08:45:47.373Z","beat":{"hostname":"lab1","name":"lab1","version":"5.6.15"},"input_type":"log","message":"hello worldecho hello world \u003e\u003e /var/log/messagesecho hello world \u003e\u003e /var/log/messages","offset":2849981,"source":"/var/log/messages","type":"system-log"}
+
+---------------------------
+
+安装redis
+配置reids，不需要数据持久化，将rdb保存方式关闭
+ daemonize yes
+ bind 0.0.0.0
+ save "“
+ requirepass 123456
+ 
+redis-cli -h 192.168.10.200 -a 123456 进入redis管理命令行
+
+配置filebeat.yml文件，通过filebeat收集日志，并将收集结果写入redis中
+output.redis:
+  hosts: ["192.168.10.200"]
+  password: "123456"
+  key: "system-log"
+  db: 10
+  timeout: 5
+
+进入redis查看
+192.168.10.200:6379> SELECT 10
+OK
+192.168.10.200:6379[10]> KEYS *
+1) "system-log"
+192.168.10.200:6379[10]> RPOP system-log
+"{\"@timestamp\":\"2019-02-24T09:07:08.153Z\",\"beat\":{\"hostname\":\"lab1\",\"name\":\"lab1\",\"version\":\"5.6.15\"},\"input_type\":\"log\",\"message\":\"Feb 24 17:07:08 lab1 systemd: Starting filebeat...\",\"offset\":659,\"source\":\"/var/log/messages\",\"type\":\"system-log\"}"
+----------------------------------------------------------------------------------------
+filebeat redis logstash elasticsearch
+filebeat收集日志 --> 写入redis
+filebeat收集日志 --> 写入logstash //filebeat收集多个类型的日志
+logstash写入 --> redis  
+logstash读取 <-- redis
+logstash --> 写入到elasticsearch
+
+
+1、filebeat搜集多个日志，输出到logstash，然后再输出到redis中，分别
+# grep -v "#" filebeat.yml |grep -v '^$'
+filebeat.prospectors:
+- input_type: log
+  paths:
+    - /var/log/messages
+  exclude_lines: ["^DBG"]
+  document_type: system-log
+- input_type: log
+  paths:
+    - /var/log/nginx/access.log
+  document_type: nginx-access-log
+output.logstash:
+  hosts: ["192.168.10.200:5044"]
+  enabled: true
+
+2、logstash开启beat读取filebeat输入的数据
+# cat filebeat.conf 
+input {
+	beats {
+		port => 5044
+		codec => "json"
+	}
+}
+output {
+	stdout {
+		codec => "rubydebug"
+	}
+}
+
+启动 查看信息
+# /usr/share/logstash/bin/logstash -f filebeat.conf 
+{
+    "@timestamp" => 2019-02-24T10:30:23.223Z,
+        "offset" => 1506,
+      "@version" => "1",
+    "input_type" => "log",
+          "beat" => {
+            "name" => "lab1",
+        "hostname" => "lab1",
+         "version" => "5.6.15"
+    },
+          "host" => "lab1",
+        "source" => "/var/log/messages",
+       "message" => "Feb 24 18:30:23 lab1 systemd: Started filebeat.",
+          "type" => "system-log",
+          "tags" => [
+        [0] "_jsonparsefailure",
+        [1] "beats_input_codec_json_applied"
+    ]
+}
+{
+    "@timestamp" => 2019-02-24T10:30:23.223Z,
+        "offset" => 1557,
+      "@version" => "1",
+          "beat" => {
+            "name" => "lab1",
+        "hostname" => "lab1",
+         "version" => "5.6.15"
+    },
+    "input_type" => "log",
+          "host" => "lab1",
+        "source" => "/var/log/messages",
+       "message" => "Feb 24 18:30:23 lab1 systemd: Starting filebeat...",
+          "type" => "system-log",
+          "tags" => [
+        [0] "_jsonparsefailure",
+        [1] "beats_input_codec_json_applied"
+    ]
+}
+3、logstash读取的数据根据type输出到redis中不同的key
+# cat /etc/logstash/conf.d/filebeat.conf 
+input {
+	beats {
+		port => 5044
+		codec => "json"
+	}
+}
+output {
+	if [type] == "system-log" {
+		redis {
+			host => "192.168.10.200"
+			port => 6379
+			password => "123456"
+			key => "system-log"
+			db => 10
+			data_type => "list"
+		}
+	}
+	if [type] == "nginx-access-log" {
+		redis {
+			host => "192.168.10.200"
+			port => 6379
+			password => "123456"
+			key => "nginx-access-log"
+			db => 10
+			data_type => "list"
+			codec => "json"
+		}
+	}
+}
+
+redis中验证：
+192.168.10.200:6379[10]> KEYS *
+1) "nginx-access-log"
+2) "system-log"
+192.168.10.200:6379[10]> LPOP nginx-access-log
+"{\"referer\":\"-\",\"offset\":524,\"input_type\":\"log\",\"source\":\"/var/log/nginx/access.log\",\"type\":\"nginx-access-log\",\"http_host\":\"192.168.10.200\",\"url\":\"/index.html\",\"tags\":[\"beats_input_codec_json_applied\"],\"upstreamhost\":\"-\",\"@timestamp\":\"2019-02-24T12:06:37.804Z\",\"size\":11,\"clientip\":\"192.168.10.200\",\"domain\":\"192.168.10.200\",\"host\":\"192.168.10.200\",\"@version\":\"1\",\"beat\":{\"name\":\"lab1\",\"hostname\":\"lab1\",\"version\":\"5.6.15\"},\"responsetime\":0.0,\"xff\":\"-\",\"upstreamtime\":\"-\",\"status\":\"200\"}"
+192.168.10.200:6379[10]> LPOP system-log
+"{\"@timestamp\":\"2019-02-24T11:01:04.826Z\",\"offset\":1619,\"@version\":\"1\",\"input_type\":\"log\",\"beat\":{\"name\":\"lab1\",\"hostname\":\"lab1\",\"version\":\"5.6.15\"},\"host\":\"lab1\",\"source\":\"/var/log/messages\",\"message\":\"Feb 24 19:01:02 lab1 systemd: Started Session 7 of user root.\",\"type\":\"system-log\",\"tags\":[\"_jsonparsefailure\",\"beats_input_codec_json_applied\"]}"
+192.168.10.200:6379[10]> 
+
+
+
+4、logstash从redis中取得的数据，并将数据写入到elasticsearch中
+4.1取得单个key，创建索引
+ # cat system_redis_es.conf 
+input {
+	redis {
+		host => "192.168.10.200"
+		port => 6379
+		db => 10
+		password => "123456"
+		key => "system-log"
+		data_type => "list"
+	}
+}
+output {
+	elasticsearch {
+		hosts => ["192.168.10.200:9200"]
+		index => "system-log-redis-%{+YYYY.MM.dd}"
+	}
+}
+4.2 取得多个key的数据，分别创建对应elasticsearch索引
+# cat es_syslog_nginxlog_redis.conf
+input {
+	redis {
+		host => "192.168.10.200"
+		db => 10
+		port => 6379
+		password => "123456"
+		key => "system-log"
+		data_type => "list"
+	}
+	redis {
+		host => "192.168.10.200"
+		db => 10
+		port => 6379
+		password => "123456"
+		key => "nginx-access-log"
+		data_type => "list"
+	}
+}
+output {
+	if [type] == "system-log" {
+		elasticsearch {
+			hosts => ["192.168.10.200:9200"]
+			index => "system-log-redis-%{+YYYY.MM.dd}"
+		}
+	}
+	if [type] == "nginx-access-log" {
+		elasticsearch {
+			hosts => ["192.168.10.200:9200"]
+			index => "nginx-access-log-redis-%{+YYYY.MM.dd}"
+		}
+	}
+}
+
+启动logstash
+# /usr/share/logstash/bin/logstash -f es_syslog_nginxlog_redis.conf
+
+验证查看
+
+----------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
