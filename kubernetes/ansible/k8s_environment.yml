@@ -1,0 +1,44 @@
+---
+
+- hosts: k8s
+  remote_user: root
+
+  tasks:
+  - name: copy yum repo
+    copy: src=files/repo/{{ item }} dest=/etc/yum.repo.d/
+    with_items:
+      - base.repo
+      - docker-ce.repo
+      - k8s.repo
+      - epel.repo
+    notify: makecache yum repo
+
+  - name: install docker-ce
+    yum: name=docker-ce state=present
+  - name: copy docker.service file
+    copy: src=files/docker.service dest=/usr/lib/systemd/system/docker.service
+    notify: reload systemctl
+  - name: start docker
+    service: name=httpd state=started enabled=yes
+
+  - name: install kubenetes pkgs
+    yum: 
+      name:
+       - kubeadm
+       - kubectl
+       - kubelet
+      state: present
+  - name: copy kubelet
+    copy: src=files/kubelet dest=/etc/sysconfig/
+
+  - name: copy sysctl file
+    copy: src=files/sysctl_k8s.conf dest=/etc/sysctl.d/k8s.conf
+    notify: sysctl reload
+
+  handlers:
+  - name: reload systemctl
+    command: systemctl daemon-reload  
+  - name: makecache yum repo
+    command: yum repolist
+  - name: sysctl reload
+    command: sysctl -p /etc/sysctl.d/k8s.conf
