@@ -53,7 +53,7 @@ Master组件
 	   3、端点（endpoint）控制器：填充endpoint对象（即连接service&pods）
 	   4、service account和token控制器：为新的namespace创建默认账户访问API TOKEN
 5、cloud-controller-manager:云控制器负责与底层云提供商的平台交互
-      具体功能：
+	具体功能：
 		节点（Node）控制器
 		路由（Route）控制器
 		Service控制器
@@ -63,7 +63,7 @@ Master组件
 节点（node）组件
 节点组件运行在node，提供kubernetes运行时环境，以及维护pod
 1、kubelet：是主要的节点代理会监视已分配给节点的pod
-      具体功能：
+	具体功能：
 		安装pod所需volume
 		下载pod的secrets
 		pod中运行的docker容器
@@ -314,6 +314,8 @@ k8s-master   Ready    master   56m     v1.13.4
 k8s-node1    Ready    <none>   7m56s   v1.13.4
 k8s-node2    Ready    <none>   7m42s   v1.13.4
 
+获取节点的详细信息
+# kubectl describe node k8s-node1
 ------------------------------------------------------------------------------------------
 如何解决从k8s.gcr.io拉取镜像失败问题
 解决方案
@@ -373,6 +375,13 @@ kubectl get po # 查看目前所有的pod
 kubectl get rs # 查看目前所有的replica set
 kubectl get deployment # 查看目前所有的deployment
 
+
+# kubectl label pods myapp-rc-9xmxs -n test-ns newlabel=hello 给指定pod添加label
+# kubectl label pods myapp-rc-9xmxs -n test-ns newlabel=world --overwrite 更新指定pod的指定label
+# kubectl label pod myapp-rc-9xmxs -n test-ns newlabel- 删除指定pod的指定label
+# kubectl get pod -n test-ns --show-labels  获取指定pod信息，以显示label的形式
+
+
 k8s删除资源状态一直是Terminating。此为背景。
 解决方法：
    可使用kubectl中的强制删除命令
@@ -381,7 +390,7 @@ k8s删除资源状态一直是Terminating。此为背景。
     # 删除NAMESPACE
     kubectl delete namespace NAMESPACENAME --force --grace-period=0
 	
-	
+安装kubernetes-dashboard	
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v1.10.1/src/deploy/recommended/kubernetes-dashboard.yaml
 
 # kubectl get svc -n kube-system
@@ -678,4 +687,65 @@ spec:         　　　　　　　#必选，Pod中容器的详细定义
         items:
         - key: string
           path: string    
-	  
+
+example 1：
+# cat rc-test.yml
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: myapp-rc
+  namespace: test-ns
+spec:
+  replicas: 2
+  selector:
+    app: myapp-rc
+  template:
+    metadata:
+      labels:
+        app: myapp-rc
+    spec:
+      containers:
+      - name: myapp-rc
+        image: ikubernetes/myapp:v7
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-rc
+  namespace: test-ns
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: myapp-rc
+创建ReplicationController和与之关联的service serivce类型是clusterip  namespace:test-ns label:myapp-rc
+# kubectl create -f rc-test.yaml
+
+# kubectl get pod -n test-ns -o wide
+NAME             READY   STATUS    RESTARTS   AGE   IP            NODE        NOMINATED NODE   READINESS GATES
+myapp-rc-9xmxs   1/1     Running   0          64m   10.244.2.12   k8s-node2   <none>           <none>
+myapp-rc-trnp4   1/1     Running   0          64m   10.244.1.18   k8s-node1   <none>           <none>
+
+# kubectl get svc -n test-ns -o wide
+NAME       TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE   SELECTOR
+myapp-rc   ClusterIP   10.109.183.48   <none>        80/TCP    58m   app=myapp-rc
+
+# kubectl describe svc myapp-rc -n test-ns
+Name:              myapp-rc
+Namespace:         test-ns
+Labels:            <none>
+Annotations:       kubectl.kubernetes.io/last-applied-configuration:
+{"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"name":"myapp-rc","namespace":"test-ns"},"spec":{"ports":[{"port":80,"pro...
+Selector:          app=myapp-rc
+Type:              ClusterIP
+IP:                10.109.183.48
+Port:              <unset>  80/TCP
+TargetPort:        80/TCP
+Endpoints:         10.244.1.18:80,10.244.2.12:80
+Session Affinity:  None
+Events:            <none>	  
