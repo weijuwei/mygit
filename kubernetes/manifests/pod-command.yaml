@@ -1,0 +1,14 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bbox-command
+  namespace: default
+spec:
+  containers:
+  - name: bbox-command
+    image: busybox
+    command: ["httpd","-f"]
+    ports:
+      - containerPort: 80
+  restartPolicy: OnFailure
