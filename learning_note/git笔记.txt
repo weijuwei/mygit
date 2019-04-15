@@ -110,7 +110,7 @@ git branch <branch_name> 创建分支
 git branch -d <branch_name> 删除指定分支
 git push origin -d <branch_name> 删除远程指定分支
 git merge <branch_name> 合并分支
-
+git branch -r -D origin/BranchName 删除本地的远程分支
 
 git diff 比较暂存区索引和工作目录；
 git diff --cached 比较本地库和暂存区索引的不同
