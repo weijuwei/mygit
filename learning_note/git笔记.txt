@@ -248,6 +248,10 @@ Date:   Mon Jan 21 20:08:17 2019 +0800
 每行显示一条提交记录
 # git log --pretty=oneline
 b2245a659545983828349b31ab7ff8c836deb025 create test.txt
+
+# 图形化显示日志信息 分支合并图
+git log --graph --pretty=oneline --abbrev-commit
+
 -------------------------------------------------------------------------
 
 远程仓库 github
